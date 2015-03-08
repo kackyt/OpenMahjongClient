@@ -68,11 +68,11 @@ static double dist_coef[] = {
 
 /* 牌の種類ごとの期待値の補正係数 */
 static double kind_coef[] = {
-    0.997,
-    0.998,
-    0.999,
+    0.994,
     0.996,
-    0.995
+    0.999,
+    0.992,
+    0.986
 };
 #endif
 
@@ -105,147 +105,23 @@ static double getKindCoef(MahjongAIState *state,unsigned num){
 }
 
 
-static double probability(MahjongAIState &param,unsigned long count,double nokorisum)
-{
-	int cnt[34];
-	int i,j;
-	unsigned long id;
-	double p = 1.0;
-
-	memset(cnt,0,sizeof(cnt));
-
-	/*
-	for(i=0;i<34;i++){
-		nokorisum += param.nokori[i];
-	}*/
-
-	for(i=0;i<4;i++){
-		id = count % 55;
-
-		if(id < 7){
-			cnt[id]++;
-			cnt[id+1]++;
-			cnt[id+2]++;
-		}else if(id < 14){
-			cnt[id+2]++;
-			cnt[id+3]++;
-			cnt[id+4]++;
-		}else if(id < 21){
-			cnt[id+4]++;
-			cnt[id+5]++;
-			cnt[id+6]++;
-		}else if(id < 55){
-			cnt[id-21]+= 3;
-		}else{
-			return 0.0;
-		}
-
-		count /= 55;
-	}
-
-	id = count % 34;
-	
-	if(id < 34){
-		cnt[id] += 2;
-	}else{
-		return 0.0;
-	}
-
-
-	for(i=0;i<34;i++){
-		if(cnt[i]){
-			cnt[i] -= param.te_cnt[i];
-			
-			if(cnt[i] > param.nokori[i]){
-				return 0;
-			}
-			
-			for(j=0;j<cnt[i];j++){
-				p *= (double)(param.nokori[i] - j) / (double) nokorisum;
-				nokorisum-=1.0;
-			}
-		}
-	}
-
-	return p;
-
-}
-
-static double score(MahjongAIState &param,unsigned long count)
-{
-	int i;
-	RESULT_ITEM item;
-	GAMESTATE state;
-	unsigned long id;
-
-	memset(&item,0x0,sizeof(item));
-	memset(&state,0x0,sizeof(state));
-
-	state.tsumo = 1;
-	state.bakaze = param.kyoku / 4;
-	state.zikaze = param.cha;
-
-	item.mentsusize = 5;
-	item.menzen = 1;
-
-	for(i=0;i<4;i++){
-		id = count % 55;
-
-		if(id < 7){
-			item.mentsulist[i].category = AI_SYUNTSU;
-			item.mentsulist[i].pailist[0] = id;
-			item.mentsulist[i].pailist[1] = id + 1;
-			item.mentsulist[i].pailist[2] = id + 2;
-		}else if(id < 14){
-			item.mentsulist[i].category = AI_SYUNTSU;
-			item.mentsulist[i].pailist[0] = id + 2;
-			item.mentsulist[i].pailist[1] = id + 3;
-			item.mentsulist[i].pailist[2] = id + 4;
-		}else if(id < 21){
-			item.mentsulist[i].category = AI_SYUNTSU;
-			item.mentsulist[i].pailist[0] = id + 4;
-			item.mentsulist[i].pailist[1] = id + 5;
-			item.mentsulist[i].pailist[2] = id + 6;
-		}else if(id < 55){
-			item.mentsulist[i].category = AI_KOUTSU;
-			item.mentsulist[i].pailist[0] = id-21;
-			item.mentsulist[i].pailist[1] = id-21;
-			item.mentsulist[i].pailist[2] = id-21;
-		}
-
-		count /= 55;
-	}
-
-	id = count % 34;
-	item.mentsulist[4].category = AI_TOITSU;
-	item.mentsulist[4].pailist[0] = id;
-	item.mentsulist[4].pailist[1] = id;
-
-	item.machi = item.mentsulist[0].category == AI_SYUNTSU ? AI_MACHI_RYANMEN : AI_MACHI_SHANPON;
-	item.machihai = item.mentsulist[0].pailist[0];
-	item.machipos = 0;
-
-	make_resultitem_bh(&item,&state);
-	
-
-	return (double)item.score;
-}
 
 typedef struct {
 	MahjongAIState *pState;
 	int hai;
 	double ret;
 	double nokorisum;
+	int count;
+	int shanten;
 } THREAD_PARAM;
 
 
 
 
-static double calcscore(THREAD_PARAM *prm, int *cnt, int *koutsucnt, int *shuntsucnt){
+static double calcscore(THREAD_PARAM *prm, int *cnt, int *koutsucnt, int *shuntsucnt,int atama){
 	RESULT_ITEM item;
 	int i, j, count = 0, pai;
-	int maxc, m, c,n,o;
-	int toitsu[4];
+	int  c,n,o;
 	double probability,rest,ret = 0.0;
 	GAMESTATE state;
 
@@ -330,102 +206,76 @@ static double calcscore(THREAD_PARAM *prm, int *cnt, int *koutsucnt, int *shunts
 		count++;
 	}
 
-	/* アタマを決定 */
-	maxc = -4;
-	for (m = 0; m < 9; m++){
-		c = prm->pState->te_cnt[m] - cnt[m];
-		if (maxc < c && prm->pState->nokori[m] > 1 - c) {
-			maxc = c;
-			toitsu[0] = m;
-		}
-	}
+	item.mentsulist[count].category = AI_TOITSU;
+	item.mentsulist[count].pailist[0] = atama;
+	item.mentsulist[count].pailist[1] = atama;
 
-	maxc = -4;
+	probability = 1.0;
+	rest = prm->nokorisum;
+	for (n = 0; n < 34; n++){
+		if (cnt[n]){
+			c = cnt[n] - prm->pState->te_cnt[n];
+			assert(prm->pState->nokori[n] - c + 1 >= 0);
+			int dist = paidistance(prm->pState->tehai.tehai, n);
+			for (o = 0; o < c; o++){
+				probability *= (double)(prm->pState->nokori[n] - o) / (double)rest;
+				probability *= dist_coef[dist + 1];
+				probability *= getKindCoef(prm->pState, n);
 
-	for (m = 9; m < 18; m++){
-		c = prm->pState->te_cnt[m] - cnt[m];
-		if (maxc < c && prm->pState->nokori[m] > 1 - c) {
-			maxc = c;
-			toitsu[1] = m;
-		}
-	}
-
-	maxc = -4;
-	for (m = 18; m < 27; m++){
-		c = prm->pState->te_cnt[m] - cnt[m];
-		if (maxc < c && prm->pState->nokori[m] > 1 - c) {
-			maxc = c;
-			toitsu[2] = m;
-		}
-	}
-	maxc = -4;
-
-	for (m = 27; m < 34; m++){
-		c = prm->pState->te_cnt[m] - cnt[m];
-		if (maxc < c && prm->pState->nokori[m] > 1 - c) {
-			maxc = c;
-			toitsu[3] = m;
-		}
-	}
-
-	for (m = 0; m < 4; m++){
-		if (toitsu[m] < 0) continue;
-		probability = 1.0;
-		rest = prm->nokorisum;
-		cnt[toitsu[m]] += 2;
-		for (n = 0; n < 34; n++){
-			if (cnt[n]){
-				c = cnt[n] - prm->pState->te_cnt[n];
-				assert(prm->pState->nokori[n] - c + 1 >= 0);
-				int dist = paidistance(prm->pState->tehai.tehai, n);
-
-				for (o = 0; o < c; o++){
-					probability *= (double)(prm->pState->nokori[n] - o) / (double)rest;
-					probability *= dist_coef[dist + 1];
-					probability *= getKindCoef(prm->pState, n);
-
-					if (prm->pState->nokori[n] - o < 0){
-						probability = 0;
-						break;
-					}
-					rest -= 1.0;
+				if (prm->pState->nokori[n] - o < 0){
+					probability = 0;
+					break;
 				}
+				rest -= 1.0;
 			}
 		}
-		cnt[toitsu[m]] -= 2;
-
-		item.mentsulist[4].category = AI_TOITSU;
-		item.mentsulist[4].pailist[0] = toitsu[m];
-		item.mentsulist[4].pailist[1] = toitsu[m];
-
-		item.machi = item.mentsulist[0].category == AI_SYUNTSU ? AI_MACHI_RYANMEN : AI_MACHI_SHANPON;
-		item.machihai = item.mentsulist[0].pailist[0];
-		item.machipos = 0;
-
-		make_resultitem_bh(&item, &state);
-		assert(probability >= 0 && item.score >= 0);
-
-		if (ret < probability * item.score) {
-			ret = probability * item.score;
-		}
 	}
+
+	item.machi = item.mentsulist[0].category == AI_SYUNTSU ? AI_MACHI_RYANMEN : AI_MACHI_SHANPON;
+	item.machihai = item.mentsulist[0].pailist[0];
+	item.machipos = 0;
+
+	make_resultitem_bh(&item, &state);
+	assert(probability >= 0 && item.score >= 0);
+
+	//item.score = 1000;
+
+	if (ret < probability * item.score) {
+		ret = 0.2 * probability * item.score + 0.8 * probability * probability * item.score;
+	}
+	prm->count++;
 
 	return ret * 4.0;
 }
 
-static double koutsupoint(THREAD_PARAM *prm, int *cnt, int *koutsucnt, int *shuntsucnt, int koutsunum, int shuntsunum, int koutsupos, int shuntsupos);
-static double shuntsupoint(THREAD_PARAM *prm, int *cnt, int *koutsucnt, int *shuntsucnt, int koutsunum, int shuntsunum, int koutsupos, int shuntsupos);
+static double koutsupoint(THREAD_PARAM *prm, int *cnt, int *koutsucnt, int *shuntsucnt, int koutsunum, int shuntsunum, int koutsupos, int shuntsupos,int atama);
+static double shuntsupoint(THREAD_PARAM *prm, int *cnt, int *koutsucnt, int *shuntsucnt, int koutsunum, int shuntsunum, int koutsupos, int shuntsupos,int atama);
 
 
-static double shuntsupoint(THREAD_PARAM *prm, int *cnt, int *koutsucnt, int *shuntsucnt, int koutsunum, int shuntsunum, int koutsupos, int shuntsupos){
+static double shuntsupoint(THREAD_PARAM *prm, int *cnt, int *koutsucnt, int *shuntsucnt, int koutsunum, int shuntsunum, int koutsupos, int shuntsupos,int atama){
 	int i;
 	double ret = 0.0;
-	int pai;
+	int pai,diff = 0;
+
+	for (i = 0; i < 34; i++){
+		if (cnt[i] > prm->pState->te_cnt[i]) diff += cnt[i] - prm->pState->te_cnt[i];
+	}
+
+	if (diff >= 5) return ret;
+
 	for (i = shuntsupos; i < 21; i++){
 		pai = (i / 7) * 9 + i % 7;
+
 		if (prm->pState->nokori[pai] > 1 + cnt[pai] - prm->pState->te_cnt[pai]
 			&& prm->pState->nokori[pai + 1] > 1 + cnt[pai + 1] - prm->pState->te_cnt[pai + 1]
 			&& prm->pState->nokori[pai + 2] > 1 + cnt[pai + 2] - prm->pState->te_cnt[pai + 2]) {
+
+			if (prm->pState->te_cnt[pai + 1] == 0 && prm->pState->te_cnt[pai] > 0 && prm->pState->te_cnt[pai + 2] > 0){
+				/* カンチャン待ちかつ両面とかぶってる場合は確率を計算しない */
+
+				if ((pai % 9) > 0 && prm->pState->te_cnt[pai - 1] > 0) continue; // 両面とかぶってる
+				if ((pai % 9) < 7 && prm->pState->te_cnt[pai + 3] > 0) continue;
+			}
 			cnt[pai]++;
 			cnt[pai + 1]++;
 			cnt[pai + 2]++;
@@ -433,12 +283,12 @@ static double shuntsupoint(THREAD_PARAM *prm, int *cnt, int *koutsucnt, int *shu
 
 			
 			if (shuntsunum - 1 > 0) {
-				ret += shuntsupoint(prm, cnt, koutsucnt, shuntsucnt, koutsunum, shuntsunum - 1, koutsupos, i);
+				ret += shuntsupoint(prm, cnt, koutsucnt, shuntsucnt, koutsunum, shuntsunum - 1, koutsupos, i,atama);
 			}else if (koutsunum > 0) {
-				ret += koutsupoint(prm, cnt, koutsucnt, shuntsucnt, koutsunum, shuntsunum - 1, koutsupos, i);
+				ret += koutsupoint(prm, cnt, koutsucnt, shuntsucnt, koutsunum, shuntsunum - 1, koutsupos, i,atama);
 			}
 			else{
-				ret += calcscore(prm, cnt, koutsucnt, shuntsucnt);
+				ret += calcscore(prm, cnt, koutsucnt, shuntsucnt,atama);
 			}
 
 			cnt[pai]--;
@@ -447,33 +297,44 @@ static double shuntsupoint(THREAD_PARAM *prm, int *cnt, int *koutsucnt, int *shu
 			shuntsucnt[i]--;
 
 		}
+
 	}
 
 	return ret;
 }
 
 
-static double koutsupoint(THREAD_PARAM *prm, int *cnt, int *koutsucnt, int *shuntsucnt, int koutsunum, int shuntsunum, int koutsupos, int shuntsupos){
+static double koutsupoint(THREAD_PARAM *prm, int *cnt, int *koutsucnt, int *shuntsucnt, int koutsunum, int shuntsunum, int koutsupos, int shuntsupos,int atama){
 	int i;
 	double ret = 0.0;
+	int diff = 0;
+	for (i = 0; i < 34; i++){
+		if (cnt[i] > prm->pState->te_cnt[i]) diff += cnt[i] - prm->pState->te_cnt[i];
+	}
+
+	if (diff >= 5) return ret;
+
 	for (i = koutsupos; i < 34; i++){
 		if (prm->pState->nokori[i] > 3 + cnt[i] - prm->pState->te_cnt[i]) {
 			cnt[i] += 3;
 			koutsucnt[i]++;
 
 			if (koutsunum - 1 > 0) {
-				ret += koutsupoint(prm, cnt, koutsucnt, shuntsucnt, koutsunum - 1, shuntsunum, i + 1, shuntsupos);
+				ret += koutsupoint(prm, cnt, koutsucnt, shuntsucnt, koutsunum - 1, shuntsunum, i + 1, shuntsupos,atama);
 			}
 			else if (shuntsunum > 0) {
-				ret += shuntsupoint(prm, cnt, koutsucnt, shuntsucnt, koutsunum - 1, shuntsunum, i + 1, shuntsupos);
+				ret += shuntsupoint(prm, cnt, koutsucnt, shuntsucnt, koutsunum - 1, shuntsunum, i + 1, shuntsupos,atama);
 			}
 			else{
-				ret += calcscore(prm, cnt, koutsucnt, shuntsucnt);
+				ret += calcscore(prm, cnt, koutsucnt, shuntsucnt,atama);
 			}
 
 			cnt[i] -= 3;
 			koutsucnt[i]--;
 
+		}
+		else{
+			cnt[i] = cnt[i];
 		}
 	}
 
@@ -488,15 +349,21 @@ static DWORD WINAPI threadfunc(LPVOID pParam)
 	int shuntsucnt[21];
 	int cnt[34];
 	int nakisum;
-
-	memset(koutsucnt, 0, sizeof(koutsucnt));
-	memset(shuntsucnt, 0, sizeof(shuntsucnt));
-	memset(cnt, 0, sizeof(cnt));
+	int i;
+	double tmp = 0;
 
 	nakisum = prm->pState->tehai.ankan_max + prm->pState->tehai.minkan_max + prm->pState->tehai.minkou_max + prm->pState->tehai.minshun_max;
 
 	if (nakisum < 1) {
-		prm->ret = koutsupoint(prm, cnt, koutsucnt, shuntsucnt, 4, 0, 0, 0);
+		for (i = 0; i < 34; i++){
+			if (prm->pState->nokori[i] >= 2){
+				memset(cnt, 0, sizeof(cnt));
+				memset(koutsucnt, 0, sizeof(koutsucnt));
+				memset(shuntsucnt, 0, sizeof(shuntsucnt));
+				cnt[i] += 2;
+				prm->ret += koutsupoint(prm, cnt, koutsucnt, shuntsucnt, 4, 0, 0, 0, i);
+			}
+		}
 	}
 
 	return 0;
@@ -512,15 +379,21 @@ static DWORD WINAPI threadfunc2(LPVOID pParam)
 	int shuntsucnt[21];
 	int cnt[34];
 	int nakisum;
-
-	memset(koutsucnt, 0, sizeof(koutsucnt));
-	memset(shuntsucnt, 0, sizeof(shuntsucnt));
-	memset(cnt, 0, sizeof(cnt));
+	int i;
+	double tmp = 0;
 
 	nakisum = prm->pState->tehai.ankan_max + prm->pState->tehai.minkan_max + prm->pState->tehai.minkou_max + prm->pState->tehai.minshun_max;
 
 	if (nakisum < 2) {
-		prm->ret = koutsupoint(prm, cnt, koutsucnt, shuntsucnt, 3, 1 - nakisum, 0, 0);
+		for (i = 0; i < 34; i++){
+			if (prm->pState->nokori[i] >= 2){
+				memset(koutsucnt, 0, sizeof(koutsucnt));
+				memset(shuntsucnt, 0, sizeof(shuntsucnt));
+				memset(cnt, 0, sizeof(cnt));
+				cnt[i] += 2;
+				prm->ret += koutsupoint(prm, cnt, koutsucnt, shuntsucnt, 3, 1 - nakisum, 0, 0, i);
+			}
+		}
 	}
 
 	return 0;
@@ -535,15 +408,21 @@ static DWORD WINAPI threadfunc3(LPVOID pParam)
 	int shuntsucnt[21];
 	int cnt[34];
 	int nakisum;
-
-	memset(koutsucnt, 0, sizeof(koutsucnt));
-	memset(shuntsucnt, 0, sizeof(shuntsucnt));
-	memset(cnt, 0, sizeof(cnt));
+	int i;
+	double tmp = 0;
 
 	nakisum = prm->pState->tehai.ankan_max + prm->pState->tehai.minkan_max + prm->pState->tehai.minkou_max + prm->pState->tehai.minshun_max;
 
 	if (nakisum < 3) {
-		prm->ret = koutsupoint(prm, cnt, koutsucnt, shuntsucnt, 2, 2 - nakisum, 0, 0);
+		for (i = 0; i < 34; i++){
+			if (prm->pState->nokori[i] >= 2){
+				memset(koutsucnt, 0, sizeof(koutsucnt));
+				memset(shuntsucnt, 0, sizeof(shuntsucnt));
+				memset(cnt, 0, sizeof(cnt));
+				cnt[i] = 2;
+				prm->ret += koutsupoint(prm, cnt, koutsucnt, shuntsucnt, 2, 2 - nakisum, 0, 0, i);
+			}
+		}
 	}
 
 	return 0;
@@ -557,15 +436,21 @@ static DWORD WINAPI threadfunc4(LPVOID pParam)
 	int shuntsucnt[21];
 	int cnt[34];
 	int nakisum;
-
-	memset(koutsucnt, 0, sizeof(koutsucnt));
-	memset(shuntsucnt, 0, sizeof(shuntsucnt));
-	memset(cnt, 0, sizeof(cnt));
+	int i;
+	double tmp = 0;
 
 	nakisum = prm->pState->tehai.ankan_max + prm->pState->tehai.minkan_max + prm->pState->tehai.minkou_max + prm->pState->tehai.minshun_max;
 
 	if (nakisum < 4) {
-		prm->ret = koutsupoint(prm, cnt, koutsucnt, shuntsucnt, 1, 3 - nakisum, 0, 0);
+		for (i = 0; i < 34; i++){
+			if (prm->pState->nokori[i] >= 2){
+				memset(koutsucnt, 0, sizeof(koutsucnt));
+				memset(shuntsucnt, 0, sizeof(shuntsucnt));
+				memset(cnt, 0, sizeof(cnt));
+				cnt[i] += 2;
+				prm->ret += koutsupoint(prm, cnt, koutsucnt, shuntsucnt, 1, 3 - nakisum, 0, 0, i);
+			}
+		}
 	}
 
 	return 0;
@@ -579,17 +464,24 @@ static DWORD WINAPI threadfunc5(LPVOID pParam)
 	int shuntsucnt[21];
 	int cnt[34];
 	int nakisum;
-
-	memset(koutsucnt, 0, sizeof(koutsucnt));
-	memset(shuntsucnt, 0, sizeof(shuntsucnt));
-	memset(cnt, 0, sizeof(cnt));
+	int i;
+	double tmp = 0;
 
 	nakisum = prm->pState->tehai.ankan_max + prm->pState->tehai.minkan_max + prm->pState->tehai.minkou_max + prm->pState->tehai.minshun_max;
 
-	if (nakisum >= 4) {
-		prm->ret = calcscore(prm, cnt, koutsucnt, shuntsucnt);
-	} else{
-		prm->ret = shuntsupoint(prm, cnt, koutsucnt, shuntsucnt, 0, 4 - nakisum, 0, 0);
+	for (i = 0; i < 34; i++){
+		if (prm->pState->nokori[i] >= 2){
+			memset(koutsucnt, 0, sizeof(koutsucnt));
+			memset(shuntsucnt, 0, sizeof(shuntsucnt));
+			memset(cnt, 0, sizeof(cnt));
+			cnt[i] += 2;
+			if (nakisum >= 4) {
+				prm->ret += calcscore(prm, cnt, koutsucnt, shuntsucnt, i);
+			}
+			else{
+				prm->ret += shuntsupoint(prm, cnt, koutsucnt, shuntsucnt, 0, 4 - nakisum, 0, 0, i);
+			}
+		}
 	}
 
 	return 0;
@@ -704,9 +596,21 @@ double MahjongAIType4::evalSutehaiSub(MahjongAIState &param,int hai)
 	DWORD dwID;
 	THREAD_PARAM tparam[THREADNUM];
 	HANDLE hThread[THREADNUM];
-	int i;
+	int i, j;
 	char message[256];
 	double nokorisum = 0.0;
+	int machi[34];
+	TENPAI_LIST list;
+	int tehai[14];
+	int tehainum = 0;
+
+	for (i = 0; i < 34; i++){
+		for (j = 0; j < param.te_cnt[i]; j++){
+			tehai[tehainum++] = i;
+		}
+	}
+
+	search_tenpai(tehai, tehainum, machi, &list, 1, 6);
 
 	for (i = 0; i<34; i++){
 		nokorisum += param.nokori[i];
@@ -717,6 +621,8 @@ double MahjongAIType4::evalSutehaiSub(MahjongAIState &param,int hai)
 		tparam[i].hai = hai;
 		tparam[i].ret = 0.0;
 		tparam[i].nokorisum = nokorisum;
+		tparam[i].count = 0;
+		tparam[i].shanten = list.shanten;
 	}
 
 	memset(hThread,0,sizeof(hThread));
@@ -738,6 +644,9 @@ double MahjongAIType4::evalSutehaiSub(MahjongAIState &param,int hai)
 	sprintf(message, "[%d] %.2lf (%.2lf,%.2lf,%.2lf,%.2lf,%.2lf,%.2lf)\r\n", hai, sum, tparam[0].ret, tparam[1].ret, tparam[2].ret, tparam[3].ret, tparam[4].ret,tparam[5].ret);
 
 	MJSendMessage(MJMI_FUKIDASHI,(UINT)message,0);
+	sprintf(message, "           (%u,%u,%u,%u,%u,%u)\r\n", tparam[0].count, tparam[1].count, tparam[2].count, tparam[3].count, tparam[4].count, tparam[5].count);
+
+	MJSendMessage(MJMI_FUKIDASHI, (UINT)message, 0);
 #endif
 
 	return sum;
