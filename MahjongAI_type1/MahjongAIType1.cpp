@@ -124,6 +124,7 @@ typedef struct {
     int hai;
     int remain;
     double ret;
+	int count;
 } THREAD_PARAM;
 
 
@@ -132,17 +133,18 @@ typedef struct {
 static DWORD WINAPI evalSutehaiSubSub(LPVOID param)
 {
     THREAD_PARAM *prm = (THREAD_PARAM *)param;
-    int simtehai[34];
+    int simtehai;
     int remain = prm->remain;
-    int i, j, k, res, painum, maxpts, pts, debug = 0;
-    double tmp, tmp2, ret, index;
-    AGARI_LIST list;
-    MJITehai resulthai;
+    int i, j, k, l;
+    double tmp, tmp2, ret, index,coef;
     int paicount;
     double nokorihais;
     double nokoribuf[34];
-
-    memcpy(&resulthai, &prm->pState->tehai, sizeof(resulthai));
+	MahjongAIType2 subai;
+	MahjongAIState copystate;
+	HAIPOINT hp[14];
+	int hpsize;
+	int score;
 
     double value = 0;
 
@@ -151,21 +153,20 @@ static DWORD WINAPI evalSutehaiSubSub(LPVOID param)
     }
     else{
         /* 8–‡ˆÈã‚Íƒcƒ‚‚ç‚È‚¢ */
-        paicount = remain / 4 > 8 ? 8 : remain / 4;
+        paicount = remain / 4;
     }
 
-    //if(paicount < 5){
-    //	paicount = 5;
-    //}
 
-    for (i = 0; i<SIMULATECOUNT; i++){
+    for (i = 0; i<prm->count; i++){
+		/* ó‘Ô‚ð‰Šú‰» */
+		memcpy(&copystate, prm->pState, sizeof(MahjongAIState));
         tmp = 0.0;
         for (j = 0; j<34; j++){
             tmp += prm->pState->nokori[j];
         }
         nokorihais = tmp;
         memcpy(nokoribuf, prm->pState->nokori, sizeof(nokoribuf));
-        memcpy(simtehai, prm->pState->tehai.tehai, sizeof(prm->pState->tehai.tehai));
+		coef = 1.0;
 
         for (j = 0; j<paicount; j++){
             index = (nokorihais + 1.0) * (double)rand() / (double)(1.0 + RAND_MAX);
@@ -173,39 +174,57 @@ static DWORD WINAPI evalSutehaiSubSub(LPVOID param)
             for (k = 0; k<34; k++){
                 tmp += nokoribuf[k];
                 if (index < tmp){
-                    simtehai[prm->pState->tehai.tehai_max + j] = 0x100 + k;
+                    simtehai = k;
                     tmp2 = nokoribuf[k] > 1.0 ? 1.0 : nokoribuf[k];
                     nokoribuf[k] -= tmp2;
                     nokorihais -= tmp2;
                     break;
                 }
             }
+
+			score = MahjongScoreAI::MJSendMessage(MJMI_GETAGARITEN, (UINT)&copystate.tehai, simtehai);
+
+			if (score > 0){
+				/* ˜a—¹‚è */
+				value += coef * score;
+				break;
+			}
+			else{
+				/* SubAI‚É‘Å‚½‚¹‚é */
+				copystate.te_cnt[simtehai]++;
+				tmp = subai.evalSutehai(copystate, hp, hpsize);
+				for (k = 0; k < hpsize; k++){
+					if (hp[k].sc == tmp){
+						/* ŽÌ‚Ä”v */
+						copystate.te_cnt[hp[k].no]--;
+						for (l = 0; l < copystate.tehai.tehai_max; l++){
+							if (copystate.tehai.tehai[l] == hp[k].no){
+								copystate.tehai.tehai[l] = simtehai;
+								break;
+							}
+						}
+						break;
+					}
+				}
+
+				qsort(&copystate.tehai.tehai, copystate.tehai.tehai_max, sizeof(int), compare_hai);
+			}
+
+			coef *= 0.8;
+
+
         }
-
-        qsort(simtehai, prm->pState->tehai.tehai_max + paicount, sizeof(int), compare_hai);
-
-        maxpts = search_agari(simtehai, prm->pState->tehai.tehai_max + paicount, &list, prm->pState->tehai.tehai_max + 1, prm->pState, getPoint);
-        value += (double)maxpts * 100 / SIMULATECOUNT;
-        if (maxpts > 0){
-            if (list.tehai[0] == 0 && list.tehai[1] == 1 && list.tehai[2] == 2){
-                debug++;
-            }
-        }
-
-        /* ‚‘¬‰»‚Ì‚½‚ß‚ÌH•v */
-        //if(i>SIMULATECOUNT/10 && 10.0 * value * SIMULATECOUNT / i < max_val) break;
 
     }
 
     prm->ret = value;
-    //fprintf(fp,"%d",debug);
 
     return 0;
 }
 
 
 
-#define THREADNUM (5)
+#define THREADNUM (4)
 
 double MahjongAIType1::evalSutehaiSub(MahjongAIState &param, int hai)
 {
@@ -222,6 +241,7 @@ double MahjongAIType1::evalSutehaiSub(MahjongAIState &param, int hai)
         tparam[i].hai = hai;
         tparam[i].ret = 0.0;
         tparam[i].remain = remain;
+		tparam[i].count = SIMULATECOUNT / THREADNUM;
         hThread[i] = (HANDLE)CreateThread(NULL, 0, evalSutehaiSubSub, &tparam[i], 0, &dwID);
     }
 
