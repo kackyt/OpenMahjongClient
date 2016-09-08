@@ -367,7 +367,7 @@ BOOL CMahjongAITestGUIDlg::OnInitDialog()
 	m_inst = NULL;
 	m_comp = NULL;
 #ifdef LOAD_LIBRARY
-	m_comp = ::LoadLibrary(TEXT("MahjongAI_type1.dll"));
+	m_comp = ::LoadLibrary(TEXT("MahjongAI.dll"));
 	if(m_comp == NULL){
 		TRACE(TEXT("Cannot load Library.\n"));
 		return -1;

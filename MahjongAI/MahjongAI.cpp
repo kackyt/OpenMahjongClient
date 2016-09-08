@@ -20,15 +20,55 @@
 
 ****************************************************************************************/
 #include <windows.h>
+#include <functional>
+#include <memory>
+#include <mruby.h>
+#include <mruby/dump.h>
+
 #include "MIPIface.h"
 
 #include "MahjongAI_global.h"
 
-UINT (*MJSendMessage)(LPVOID,UINT,UINT,UINT);
+using namespace std;
+
+static UINT(*MJSendMessage)(LPVOID, UINT, UINT, UINT);
+extern "C" const uint8_t ai[];
+
+class MJAIRuby {
+public:
+	mrb_state *_mrb;
+	mrb_value _mr_value;
+	UINT interfaceFunc(UINT message, UINT param1, UINT param2);
+};
+
+extern "C" mrb_value __stdcall callMessage(mrb_state *mrb, mrb_value self, mrb_value param1, mrb_value param2, mrb_value param3)
+{
+	return mrb_nil_value();
+}
+
+
+UINT MJAIRuby::interfaceFunc(UINT message, UINT param1, UINT param2)
+{
+	if (message == MJPI_INITIALIZE) {
+		_mrb = mrb_open();
+		_mr_value = mrb_load_irep(_mrb, ai);
+	}
+
+	mrb_value ret = mrb_funcall(_mrb, _mr_value, "native_interface", 3, mrb_fixnum_value(message), mrb_fixnum_value(param1), mrb_fixnum_value(param2));
+
+	return mrb_fixnum(ret);
+}
+
 
 // インターフェース関数
-extern "C" UINT __stdcall MJPInterfaceFunc(void* inst,UINT message,UINT param1,UINT param2)
+extern "C" UINT __stdcall MJPInterfaceFunc(MJAIRuby* inst,UINT message,UINT param1,UINT param2)
 {
+	if (message == MJPI_YOURNAME) {
+		return (UINT)"てすと";
+	}
+	if (inst) {
+		return inst->interfaceFunc(message, param1, param2);
+	}
     switch(message){
     case MJPI_SUTEHAI :
        return MJPIR_SUTEHAI | 13;
@@ -43,7 +83,7 @@ extern "C" UINT __stdcall MJPInterfaceFunc(void* inst,UINT message,UINT param1,U
     case MJPI_ENDGAME :
        return 0;
     case MJPI_CREATEINSTANCE :
-       return 0;
+       return sizeof(MJAIRuby);
     case MJPI_INITIALIZE :
        MJSendMessage = (UINT (*)(LPVOID,UINT,UINT,UINT))param2;
        return 0;

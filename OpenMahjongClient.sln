@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2013
-VisualStudioVersion = 12.0.31101.0
+# Visual Studio 14
+VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MahjongAI", "MahjongAI\MahjongAI.vcxproj", "{4E90355D-257B-469F-B683-80D1628AA8EF}"
 EndProject
@@ -20,7 +20,13 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MahjongAITest", "MahjongAIT
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MahjongAITestGUI", "MahjongAITestGUI\MahjongAITestGUI.vcxproj", "{E21320D5-2183-420E-9F68-58794540EDD7}"
 	ProjectSection(ProjectDependencies) = postProject
+		{4E90355D-257B-469F-B683-80D1628AA8EF} = {4E90355D-257B-469F-B683-80D1628AA8EF}
 		{142641BB-F65C-479D-B721-E5BF246239F9} = {142641BB-F65C-479D-B721-E5BF246239F9}
+		{957777CB-91E0-4BA5-8541-B27F06DE602F} = {957777CB-91E0-4BA5-8541-B27F06DE602F}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MahjongAI_type2", "MahjongAI_type2\MahjongAI_type2.vcxproj", "{C3CC3F4F-2B18-4B03-B455-A87DC3FCE0B0}"
+	ProjectSection(ProjectDependencies) = postProject
 		{957777CB-91E0-4BA5-8541-B27F06DE602F} = {957777CB-91E0-4BA5-8541-B27F06DE602F}
 	EndProjectSection
 EndProject
@@ -50,6 +56,10 @@ Global
 		{E21320D5-2183-420E-9F68-58794540EDD7}.Debug|Win32.Build.0 = Debug|Win32
 		{E21320D5-2183-420E-9F68-58794540EDD7}.Release|Win32.ActiveCfg = Release|Win32
 		{E21320D5-2183-420E-9F68-58794540EDD7}.Release|Win32.Build.0 = Release|Win32
+		{C3CC3F4F-2B18-4B03-B455-A87DC3FCE0B0}.Debug|Win32.ActiveCfg = Debug|Win32
+		{C3CC3F4F-2B18-4B03-B455-A87DC3FCE0B0}.Debug|Win32.Build.0 = Debug|Win32
+		{C3CC3F4F-2B18-4B03-B455-A87DC3FCE0B0}.Release|Win32.ActiveCfg = Release|Win32
+		{C3CC3F4F-2B18-4B03-B455-A87DC3FCE0B0}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
