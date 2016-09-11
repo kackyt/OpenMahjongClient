@@ -32,7 +32,7 @@
 using namespace std;
 
 static UINT(*MJSendMessage)(LPVOID, UINT, UINT, UINT);
-extern "C" const uint8_t ai[];
+extern "C" const uint8_t ai[], ailib[];
 
 class MJAIRuby {
 public:
@@ -51,7 +51,10 @@ UINT MJAIRuby::interfaceFunc(UINT message, UINT param1, UINT param2)
 {
 	if (message == MJPI_INITIALIZE) {
 		_mrb = mrb_open();
+		mrb_load_irep(_mrb, ailib);
 		_mr_value = mrb_load_irep(_mrb, ai);
+		struct RClass *mod = mrb_module_get(_mrb, "MahjongAI");
+		_mr_value = mrb_obj_value(mod);
 	}
 
 	mrb_value ret = mrb_funcall(_mrb, _mr_value, "native_interface", 3, mrb_fixnum_value(message), mrb_fixnum_value(param1), mrb_fixnum_value(param2));

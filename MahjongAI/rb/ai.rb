@@ -25,14 +25,14 @@ MJPIR_MINKAN	= 0x00020000
 MJPIR_ANKAN		= 0x00040000
 MJPIR_RON		  = 0x00080000
 
-
-
-
-def native_interface(message, param1, param2)
-  case message
-  when MJPI_SUTEHAI
-    return MJPIR_SUTEHAI | 12
-  else
-    return 0
+module MahjongAI
+  extend self
+  def native_interface(message, param1, param2)
+    case message
+    when MJPI_SUTEHAI
+      return MJPIR_SUTEHAI | AILib.get_tsumogiri
+    else
+      return 0
+    end
   end
 end

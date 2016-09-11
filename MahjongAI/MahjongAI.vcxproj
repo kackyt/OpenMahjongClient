@@ -88,6 +88,7 @@
   <ItemGroup>
     <ClCompile Include="MahjongAI.cpp" />
     <ClCompile Include="rb\ai.c" />
+    <ClCompile Include="rb\ailib.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MahjongAI_global.h" />
