@@ -24,11 +24,13 @@
 #include <math.h>
 #include <float.h>
 #include <time.h>
+#include "tiny_dnn/tiny_dnn.h"
 #include "MIPIface.h"
 #include "AILib.h"
 #include "MahjongScoreAI.h"
 
 using namespace std;
+using namespace tiny_dnn;
 
 //#define AIDUMP
 #ifdef AIDUMP
@@ -116,6 +118,11 @@ protected:
 	UINT on_end_game(int rank, LONG score);
 	UINT on_exchange(UINT state, UINT option);
 	void sendComment(int index);
+	network<sequential> nn;
+	std::vector<vec_t> input_data;
+	std::vector<vec_t> desired_out;
+	void regression();
+	void trainEpoch();
 };
 enum {
 	AI_KYOKUSTS_TSUMO,
@@ -256,6 +263,17 @@ void MahjongAI::initParam(void)
 	current_p = 0;
 	size_p = siz;
 	tehai_score = DBL_MAX;
+
+	// input
+	// シャンテン数
+	// 巡目
+	// 他のリーチの数
+
+	nn = network<sequential>();
+
+	nn << fc(3, 200) << relu_layer()
+		<< fc(200, 30) << relu_layer()
+		<< fc(30, 2) << softmax_layer();
 }
 
 void MahjongAI::destroyParam(void)
@@ -1058,6 +1076,42 @@ UINT MahjongAI::on_start_kyoku(int k, int c)
 	printStackTrace("END on_start_kyoku\n");
 #endif
 	return 0;
+}
+
+void MahjongAI::regression()
+{
+	int rnum = 0;
+	int shanten = 0;
+	TENPAI_LIST list;
+	MJITehai tehai;
+
+	pState->myself.toTehai(&tehai);
+
+	/* シャンテン数を数える */
+	shanten = search_tenpai((int*)tehai.tehai, tehai.tehai_max, NULL, &list, 1, 6);
+	/* オリるか攻めるかの判断 */
+	for (int i = 0; i < 3; i++) {
+		if (pState->players[i]._is_riichi) rnum++;
+	}
+	switch (kyokustate) {
+	case AI_KYOKUSTS_TSUMO:
+	case AI_KYOKUSTS_RON:
+		input_data.push_back({ 0.0f , (float)jun,  (float)rnum});
+		desired_out.push_back({ 1.0f,  0.0f });
+		break;
+	case AI_KYOKUSTS_TEKIAGARI:
+		break;
+	case AI_KYOKUSTS_FURIKOMI:
+		input_data.push_back({ (float)shanten , (float)jun,  (float)rnum });
+		desired_out.push_back({ 0.0f,  1.0f });
+		break;
+	default:
+		break;
+	}
+}
+
+void MahjongAI::trainEpoch()
+{
 }
 
 // 局終了時の処理
